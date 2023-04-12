@@ -1,6 +1,12 @@
 # Cornwall Fire Model
 James Millington
 
+``` r
+library(terra)
+library(tidyverse)
+library(googlesheets4)
+```
+
 ## Introduction
 
 This document presents code and to implement the McArthur Fire model for
@@ -9,14 +15,64 @@ King’s College London students in the Dept. of Geography.
 
 ## Model Parameterisation
 
+Equations for the McArthur fire model we will use come from [Noble *et
+al.* (1980)](https://doi.org/10.1111/j.1442-9993.1980.tb01243.x).
+
+In the field, students collected data to help estimate key variables for
+McArthur’s model for different land cover types represented in the UK
+CEH Land Cover Map:
+
+- degree of curing, *C*, in %
+
+- fuel load, *W*, in tons per hectare
+
+By combining these variables with climate variables and the UK CEH Land
+Cover Map we can estimate fire danger and rate of spread across Cornwall
+and for different climate scenarios.
+
+Summaries of the data collected by the six groups of students are shown
+in the Summary tab of [the Google spreadsheet used to record the
+data](https://docs.google.com/spreadsheets/d/1HReAFVljlUpjqmHOGYqvDZcUn9lkkPPRQ9ebb5BkQso/edit?usp=sharing).
+In turn, these summaries depend on summary equations in each of the data
+sheets (see bottom of data). Finally, calculations from the combined
+student field measurements are made in cells A26:E30 (shaded blue) on
+the Summary tab. Several of these calculations are based on the
+information presented in [Pasalodos-Tato *et al.*
+(2015)](http://doi.org/10.1007/s10342-015-0870-6).
+
+We can read these calculated parameter values for *C* and *W* directly
+our model code here:
+
 ``` r
-library(terra)
+sheet_data <-range_read(ss="https://docs.google.com/spreadsheets/d/1HReAFVljlUpjqmHOGYqvDZcUn9lkkPPRQ9ebb5BkQso/edit#gid=937321199",
+                        sheet="Summary",
+                        range="A26:E30")
+sheet_data
 ```
 
-    terra 1.7.18
+    # A tibble: 4 × 5
+      `Land Cover`  Grass Heath   Decid Conif
+      <chr>         <dbl> <dbl>   <dbl> <dbl>
+    1 Curing       29.1   32.6   NA      NA  
+    2 W-ground      0.716  1.91   0.667   0  
+    3 W-trees       0      6.28 105.     91.8
+    4 W-total       0.716  8.19 105.     91.8
+
+## Model Application
 
 ``` r
 fpath <- "/home/james/OneDrive/Teaching/2022-23/undergrad/fieldwork/cornwall/data/lcm-2020-25m_tiled_4639069/sx/sx06.tif"
 ```
 
-## Model Application
+## References
+
+Pasalodos-Tato, M., Ruiz-Peinado, R., Del Río, M., & Montero, G. (2015).
+Shrub biomass accumulation and growth rate models to quantify carbon
+stocks and fluxes for the Mediterranean region. *European Journal of
+Forest Research*, *134*, 537-553.
+<https://doi.org/10.1007/s10342-015-0870-6>
+
+Noble, I. R., Gill, A. M., & Bary, G. A. V. (1980). McArthur’s
+fire‐danger meters expressed as equations. *Australian Journal of
+Ecology*, *5*(2), 201-203.
+<https://doi.org/10.1111/j.1442-9993.1980.tb01243.x>
