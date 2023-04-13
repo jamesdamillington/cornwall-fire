@@ -16,9 +16,9 @@ library(googlesheets4)
 
 This document presents code and to implement the McArthur Fire model for a region of Cornwall, UK, parameterised using field data collected by King's College London students in the Dept. of Geography.
 
-## Model Parameterisation
+## Model Inputs
 
-Equations for the McArthur fire model we will use come from [Noble *et al.* (1980)](https://doi.org/10.1111/j.1442-9993.1980.tb01243.x).
+Equations for the McArthur fire model we will use come from [Noble *et al.* (1980)](https://doi.org/10.1111/j.1442-9993.1980.tb01243.x). To apply the model to a particular location and time we need to provide various numeric inputs.
 
 In the field, students collected data to help estimate key variables for McArthur's model for different land cover types represented in the UK CEH Land Cover Map:
 
@@ -28,9 +28,9 @@ In the field, students collected data to help estimate key variables for McArthu
 
 By combining these variables with climate variables and the UK CEH Land Cover Map we can estimate fire danger and rate of spread across Cornwall and for different climate scenarios.
 
-Summaries of the data collected by the six groups of students are shown in the Summary tab of [the Google spreadsheet used to record the data](https://docs.google.com/spreadsheets/d/1HReAFVljlUpjqmHOGYqvDZcUn9lkkPPRQ9ebb5BkQso/edit?usp=sharing). In turn, these summaries depend on summary equations in each of the data sheets (see bottom of data). Finally, calculations from the combined student field measurements are made in cells A26:E30 (shaded blue) on the Summary tab. Several of these calculations are based on the information presented in [Pasalodos-Tato *et al.* (2015)](http://doi.org/10.1007/s10342-015-0870-6).
+Summaries of the data collected by the six groups of students are shown in the Summary tab of [the Google spreadsheet used to record the data](https://docs.google.com/spreadsheets/d/1HReAFVljlUpjqmHOGYqvDZcUn9lkkPPRQ9ebb5BkQso/edit?usp=sharing). In turn, these summaries depend on summary equations in each of the data sheets (see rows at the bottom of input data). Finally, calculations from the combined student field measurements are made in cells A26:E30 (shaded blue) on the Summary tab. Several of these calculations are based on the information presented in [Pasalodos-Tato *et al.* (2015)](http://doi.org/10.1007/s10342-015-0870-6).
 
-We can read these calculated parameter values for *C* and *W* directly our model code here:
+We can read these estimated values for *C* and *W* for the different land cover types directly our model code here:
 
 ```{r}
 #| warning: false
@@ -44,6 +44,39 @@ sheet_data
 
 ```{r}
 fpath <- "/home/james/OneDrive/Teaching/2022-23/undergrad/fieldwork/cornwall/data/lcm-2020-25m_tiled_4639069/sx/sx06.tif"
+sx06 <- rast(fpath, lyrs=1)
+plot(sx06)
+```
+
+The colours and their corresponding values in the map above correspond to the UK CEH Land Cover classification.
+
+We shall re-classify these
+
+| Fire Model Cover | Original CEH Classes |
+|------------------|----------------------|
+| Deciduous        | 1                    |
+| Conifer          | 2                    |
+| Arable           | 3                    |
+| Grassland        | 4-7                  |
+| Heathland        | 9-10                 |
+| Non-Veg          | 8, 11-21             |
+
+: Re-classification of land cover for fire model
+
+```{r}
+decid <- c(1,1,1)
+conif <- c(2,2,2)
+arable <- c(3,3,3)
+grass <- c(4,7,4)
+nonVeg <- c(8,8,6)
+heath <- c(9,10,5)
+nonVeg2 <- c(11,21,6)
+
+FT <- rbind(decid, conif, arable, grass, nonVeg, heath, nonVeg2)
+
+fuelType <- classify(sx06, rcl=FT, right=NA)
+
+plot(fuelType)
 ```
 
 ## References
