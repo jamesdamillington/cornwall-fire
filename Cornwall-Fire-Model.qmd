@@ -111,14 +111,14 @@ We also need to provide climate inputs - if we assume climate is uniform across 
 temperature <- 20  #degrees C
 humidity <- 50     #%
 wind <- 10         #km/hr
-KDBI <- 400     #KDBI
+KDBI <- 400     #KDBI (range is 0 [no drought] to 800 [extreme drought])
 daysRain <- 1   #days since rain
 pptn <- 10      #last rain in mm
   
 drought <- 0.191*(KDBI+104)*(daysRain+1)^1.5/(3.52*(daysRain+1)^1.5+pptn-1)
 ```
 
-Now we can calculate Fire Danger using the McArthur grassland fire danger model for Grassland and Heathland fuel types (land covers) using their respective curing and biomass values, and the forest fire danger model for the Deciduous and Conifer types for their curing and biomass values.
+Now we can calculate Fire Danger using the McArthur grassland fire danger model for Grassland and Heathland fuel types (land covers) using their respective curing and biomass values, and the forest fire danger model for the Deciduous and Conifer types (based solely on climate inputs).
 
 ```{r}
 GrassM <- (((97.7+4.06*humidity)/(temperature+6)-0.00854*humidity))*((100-curing)/100)
@@ -132,10 +132,10 @@ FDM[fuelType==2]<-ForestFDM    #conifer
 FDM[fuelType==3]<-max(GrassFDM[fuelType==4])/2   #half grassland danger 
 FDM[fuelType==6]<-0    #non-veg
 
-plot(FDM)
+plot(FDM, main="Fire Danger (McArthur scale 0-100")
 ```
 
-Rate of Spread
+We can also calculate predicted Rate of Spread (RoS) once a fire is alight. For forest fuel types this is dependent on a combination of fire danger and biomass, whereas for fuel types based on the grass model (Grassland, Heathland, Arable) RoS is related only to fire danger.
 
 ```{r}
 RoS <- FDM
@@ -152,7 +152,61 @@ RoS[fuelType==4]<-heathRoS
 RoS[fuelType==5]<-grassRoS
 RoS[fuelType==6]<-0
 
-plot(RoS)
+plot(RoS, main="Rate of Spread (km per hour)")
+```
+
+We could now use this model to explore different scenarios, primarily of different climatic conditions but also for different possible land use/cover futures.
+
+To explore the effect of climate, set values we are interested in:
+
+```{r}
+temperature <- 30  #degrees C
+humidity <- 40     #%
+wind <- 10         #km/hr
+KDBI <- 200     #KDBI (range is 0 [no drought] to 800 [extreme drought])
+daysRain <- 10   #days since rain
+pptn <- 10      #last rain in mm
+```
+
+Then calculate the fire danger for these new climate values:
+
+```{r}
+drought <- 0.191*(KDBI+104)*(daysRain+1)^1.5/(3.52*(daysRain+1)^1.5+pptn-1)
+GrassM <- (((97.7+4.06*humidity)/(temperature+6)-0.00854*humidity))*((100-curing)/100)
+GrassFDM <- 3.35*biomass*exp(-0.0897*GrassM+0.0403*wind)
+ForestFDM <- 1.25*drought*exp((temperature-humidity)/30+0.0234*wind)
+```
+
+And finally apply the model to our map of fuel types to estimate fire danger
+
+```{r}
+FDM <- GrassFDM
+FDM[fuelType==1]<-ForestFDM    #deciduous
+FDM[fuelType==2]<-ForestFDM    #conifer
+FDM[fuelType==3]<-max(GrassFDM[fuelType==4])/2   #half grassland danger 
+FDM[fuelType==6]<-0    #non-veg
+
+plot(FDM, main="McArthur Fire Danger")
+```
+
+And RoS for the new climate values
+
+```{r}
+RoS <- FDM
+
+forestMulti<-max(FDM[fuelType==1])*0.0012
+
+grassRoS<-max(FDM[fuelType==4]*0.13)
+heathRoS<-max(FDM[fuelType==5]*0.13)
+
+RoS[fuelType==1]<-biomass*forestMulti
+RoS[fuelType==2]<-biomass*forestMulti
+RoS[fuelType==3]<-grassRoS
+RoS[fuelType==4]<-heathRoS
+RoS[fuelType==5]<-grassRoS
+RoS[fuelType==6]<-0
+
+plot(RoS, main="Rate of Spread (km per hour)")
 ```
 
 ## References
