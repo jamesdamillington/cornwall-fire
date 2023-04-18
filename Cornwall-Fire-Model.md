@@ -407,3 +407,11 @@ Noble, I. R., Gill, A. M., & Bary, G. A. V. (1980). McArthur’s
 fire‐danger meters expressed as equations. *Australian Journal of
 Ecology*, *5*(2), 201-203.
 <https://doi.org/10.1111/j.1442-9993.1980.tb01243.x>
+
+## Licence
+
+Code and Text: James D.A. Millington, 2023 [GNU GENERAL PUBLIC
+LICENSE](https://github.com/jamesdamillington/cornwall-fire/blob/main/LICENSE)
+
+Land Cover Data owned by [UK Centre for Ecology &
+Hydrology](https://www.ceh.ac.uk) © Database Right/Copyright UKCEH
