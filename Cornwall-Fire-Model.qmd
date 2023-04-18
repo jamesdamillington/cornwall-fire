@@ -8,19 +8,20 @@ editor: visual
 ```{r}
 #| warning: false
 library(terra)
+library(rasterVis)
 library(tidyverse)
 library(googlesheets4)
 ```
 
 ## Introduction
 
-This document presents code and to implement the McArthur Fire model for a region of Cornwall, UK, parameterised using field data collected by King's College London students in the Dept. of Geography.
+This document presents code and to implement the McArthur Fire model for a region of Cornwall, UK, parameterised using field data collected by King's College London students in the Dept. of Geography. This is a [Quarto](https://quarto.org/) document that combines text with code - here we use [the R coding language](https://www.r-project.org/), primarily with [the *terra* package](https://rspatial.org/terra/pkg/1-introduction.html) for working with raster data (see a brief tutorial to Raster GIS operations in R with *terra* [here](https://www.ecologi.st/spatial-r/terra.html)).
 
 ## Model Inputs
 
 Equations for the McArthur fire model we will use come from [Noble *et al.* (1980)](https://doi.org/10.1111/j.1442-9993.1980.tb01243.x). To apply the model to a particular location and time we need to provide various numeric inputs.
 
-In the field, students collected data to help estimate key variables for McArthur's model for different land cover types represented in the UK CEH Land Cover Map:
+In the field, students collected data to help estimate key variables for McArthur's model for different land cover types represented in the [UK CEH Land Cover Maps](https://www.ceh.ac.uk/data/ukceh-land-cover-maps):
 
 -   degree of curing, *C*, in %
 
@@ -28,12 +29,13 @@ In the field, students collected data to help estimate key variables for McArthu
 
 By combining these variables with climate variables and the UK CEH Land Cover Map we can estimate fire danger and rate of spread across Cornwall and for different climate scenarios.
 
-Summaries of the data collected by the six groups of students are shown in the Summary tab of [the Google spreadsheet used to record the data](https://docs.google.com/spreadsheets/d/1HReAFVljlUpjqmHOGYqvDZcUn9lkkPPRQ9ebb5BkQso/edit?usp=sharing). In turn, these summaries depend on summary equations in each of the data sheets (see rows at the bottom of input data). Finally, calculations from the combined student field measurements are made in cells A26:E30 (shaded blue) on the Summary tab. Several of these calculations are based on the information presented in [Pasalodos-Tato *et al.* (2015)](http://doi.org/10.1007/s10342-015-0870-6).
+Summaries of the data collected by the six groups of students are shown in the *Summary* tab of [the Google spreadsheet used to record the data](https://docs.google.com/spreadsheets/d/1HReAFVljlUpjqmHOGYqvDZcUn9lkkPPRQ9ebb5BkQso/edit?usp=sharing). In turn, these summaries depend on summary equations in each of the data sheets (see rows at the bottom of input data). Finally, calculations from the combined student field measurements are made in cells A26:E30 (shaded blue) in the *Summary* tab. Several of these calculations are based on the information presented in [Pasalodos-Tato *et al.* (2015)](http://doi.org/10.1007/s10342-015-0870-6).
 
 We can read these estimated values for *C* and *W* for the different land cover types directly our model code here:
 
 ```{r}
 #| warning: false
+gs4_deauth()  #run in deauthorised mode as we are accessing a public sheet 
 sheet_data <-range_read(ss="https://docs.google.com/spreadsheets/d/1HReAFVljlUpjqmHOGYqvDZcUn9lkkPPRQ9ebb5BkQso/edit#gid=937321199",
                         sheet="Summary",
                         range="A26:E30")
@@ -41,6 +43,10 @@ sheet_data
 ```
 
 ## Model Application
+
+### Land Cover Map
+
+First we read and display the UK CEH Land Cover Map for our study region. We will use this to determine the location of our fuel types across the study region.
 
 ```{r}
 fpath <- "/home/james/OneDrive/Teaching/2022-23/undergrad/fieldwork/cornwall/data/lcm-2020-25m_tiled_4639069/sx/sx06.tif"
@@ -50,7 +56,7 @@ plot(sx06)
 
 The colours and their corresponding values in the map above correspond to the UK CEH Land Cover classification.
 
-We shall re-classify these
+We shall re-classify these for our fire model as follows:
 
 | Fire Fuel Type | Fire Fuel Type ID | Original CEH Classes |
 |----------------|-------------------|----------------------|
@@ -61,9 +67,10 @@ We shall re-classify these
 | Heathland      | 5                 | 9-10                 |
 | Non-Veg        | 6                 | 8, 11-21             |
 
-: Re-classification of land cover for fire model
+: Here's the code for the re-classification:
 
 ```{r}
+#first create a table as above to define the re-classification
 decid <- c(1,1,1)
 conif <- c(2,2,2)
 arable <- c(3,3,3)
@@ -71,143 +78,223 @@ grass <- c(4,7,4)
 nonVeg <- c(8,8,6)
 heath <- c(9,10,5)
 nonVeg2 <- c(11,21,6)
-
 FMC <- rbind(decid, conif, arable, grass, nonVeg, heath, nonVeg2)
 
-fuelType <- classify(sx06, rcl=FMC, right=NA)
+#then run the reclassification on the original raster map
+fuelType_int <- classify(sx06, rcl=FMC, right=NA) 
 
-plot(fuelType, main="Fire Fuel Types")
+#and quickly plot
+plot(fuelType_int)
 ```
 
-Now we create raster maps for the curing and biomass inputs, applying the estimates from the field to each of our land cover types. First, the curing input (from % dead vegetation) for Grassland and Heathland.
+This looks like it has worked, but the map is not very informative, so let's change colours and add a proper legend:
 
 ```{r}
-curing <- fuelType
+#first copy the map
+fuelType_cat <- fuelType_int
+
+#now define the classes represented in the map
+cls <- data.frame(id=1:6, 
+                  cover=c("Deciduous", "Conifer", "Arable", "Grassland", "Heathland", "Non-Veg") )
+levels(fuelType_cat) <- cls
+
+#set the colours for each class
+coltab(fuelType_cat) <- data.frame(values=1:6,
+                        cols=c('forestgreen', 'darkolivegreen','wheat1', 'lightgreen', 'darkorchid', 'gray' ))
+
+#and plot 
+plot(fuelType_cat, main="Fire Fuel Types")
+```
+
+This looks better. The next line of code will create an interactive map in R-Studio to show the location of the study area in Cornwall, but not in the non-interactive version of the document.
+
+```{r}
+#if running this in RStudio we can visualise in an interactive map
+#library(leaflet)
+#leaflet() |> addTiles() |> addRasterImage(raster::raster(fuelType_cat), colors = "Spectral", opacity = 0.8)
+```
+
+### Vegetation Parameters
+
+Now we create raster maps for the curing and biomass parameters, applying the estimates from the field to each of our land cover types. First, the curing input (from % dead vegetation) for Grassland and Heathland.
+
+```{r}
+curing <- fuelType_int
 curing[curing==1]<-NA
 curing[curing==2]<-NA
 curing[curing==3]<-NA
-curing[curing==4]<-as.numeric(sheet_data[1,2])
-curing[curing==5]<-as.numeric(sheet_data[1,3])
+curing[curing==4]<-as.numeric(sheet_data[1,2])  #grassland
+curing[curing==5]<-as.numeric(sheet_data[1,3])  #heathlad
 curing[curing==6]<-NA
-plot(curing, main="Curing (% dead veg)")
+
+levelplot(curing, margin=F, main="Curing (% dead veg)",par.settings = RdBuTheme, at=seq(0, 100, by = 1), contour=T)
 ```
 
-Next biomass for Deciduous forest , Confier forest, Grassland and Heathland.
+Next biomass for Deciduous forest , Conifer forest, Grassland and Heathland.
 
 ```{r}
-biomass <- fuelType
-biomass[biomass==1]<-as.numeric(sheet_data[4,4])
-biomass[biomass==2]<-as.numeric(sheet_data[4,5])
+biomass <- fuelType_int
+biomass[biomass==1]<-as.numeric(sheet_data[4,4])  #decid
+biomass[biomass==2]<-as.numeric(sheet_data[4,5])  #conifer
 biomass[biomass==3]<-NA
-biomass[biomass==4]<-as.numeric(sheet_data[4,2])
-biomass[biomass==5]<-as.numeric(sheet_data[4,3])
+biomass[biomass==4]<-as.numeric(sheet_data[4,2])  #grassland
+biomass[biomass==5]<-as.numeric(sheet_data[4,3])  #heathland
 biomass[biomass==6]<-NA
-plot(biomass, main="Biomass (tons per ha)")
+
+levelplot(biomass, margin=F, main="Biomass (tons per ha)", par.settings=infernoTheme)
 ```
 
-We also need to provide climate inputs - if we assume climate is uniform across the study region we don't need to make rasters but can just create individual variables.
+### Climate Variables
+
+We also need to provide climate inputs - if we assume climate is uniform across the study region we don't need to make raster maps but can just create individual variables:
 
 ```{r}
 temperature <- 20  #degrees C
 humidity <- 50     #%
 wind <- 10         #km/hr
-KDBI <- 400     #KDBI (range is 0 [no drought] to 800 [extreme drought])
+KDBI <- 50     #KDBI (range is 0 [no drought] to 800 [extreme drought])
 daysRain <- 1   #days since rain
 pptn <- 10      #last rain in mm
-  
-drought <- 0.191*(KDBI+104)*(daysRain+1)^1.5/(3.52*(daysRain+1)^1.5+pptn-1)
 ```
 
-Now we can calculate Fire Danger using the McArthur grassland fire danger model for Grassland and Heathland fuel types (land covers) using their respective curing and biomass values, and the forest fire danger model for the Deciduous and Conifer types (based solely on climate inputs).
+Later we can vary the values above to examine how different scenarios of weather influence fire danger and rate of spread of fire.
+
+### Calculating Fire Danger
+
+Now we can calculate Fire Danger using the McArthur grassland fire danger model for Grassland and Heathland fuel types using their respective curing and biomass parameter values, and the forest fire danger model for the Deciduous and Conifer types (based solely on climate inputs).
 
 ```{r}
+#see Noble et al. 1980 for equations
+drought <- 0.191*(KDBI+104)*(daysRain+1)^1.5/(3.52*(daysRain+1)^1.5+pptn-1)
+
 GrassM <- (((97.7+4.06*humidity)/(temperature+6)-0.00854*humidity))*((100-curing)/100)
 GrassFDM <- 3.35*biomass*exp(-0.0897*GrassM+0.0403*wind)
 ForestFDM <- 1.25*drought*exp((temperature-humidity)/30+0.0234*wind)
-
-
-FDM <- GrassFDM
-FDM[fuelType==1]<-ForestFDM    #deciduous
-FDM[fuelType==2]<-ForestFDM    #conifer
-FDM[fuelType==3]<-max(GrassFDM[fuelType==4])/2   #half grassland danger 
-FDM[fuelType==6]<-0    #non-veg
-
-plot(FDM, main="Fire Danger (McArthur scale 0-100")
 ```
+
+And now apply the model calculations to the raster fuel map:
+
+```{r}
+FDM <- GrassFDM
+FDM[fuelType_int==1]<-ForestFDM    #deciduous
+FDM[fuelType_int==2]<-ForestFDM    #conifer
+FDM[fuelType_int==3]<-max(GrassFDM[fuelType_int==4])/2   #half grassland danger 
+FDM[fuelType_int==6]<-0    #non-veg
+
+levelplot(FDM, margin=F, main="Fire Danger (McArthur scale)", par.settings=infernoTheme)
+```
+
+So here's our first Fire Danger map! Note the scale on the right - the McArthur model is unitless but can range from 0 (no fire danger) into the 100s (high danger). Check you can see how the different fuel types have different danger levels. What land cover (fuel type) are are the light coloured areas?
+
+### Calculating Rate of Spread
 
 We can also calculate predicted Rate of Spread (RoS) once a fire is alight. For forest fuel types this is dependent on a combination of fire danger and biomass, whereas for fuel types based on the grass model (Grassland, Heathland, Arable) RoS is related only to fire danger.
 
 ```{r}
 RoS <- FDM
 
-forestMulti<-max(FDM[fuelType==1])*0.0012
+#again see Noble et al. (1980) for equations
+forestMulti<-max(FDM[fuelType_int==1])*0.0012
+grassRoS<-max(FDM[fuelType_int==4]*0.13)
+heathRoS<-max(FDM[fuelType_int==5]*0.13)
 
-grassRoS<-max(FDM[fuelType==4]*0.13)
-heathRoS<-max(FDM[fuelType==5]*0.13)
+RoS[fuelType_int==1]<-biomass*forestMulti
+RoS[fuelType_int==2]<-biomass*forestMulti
+RoS[fuelType_int==3]<-grassRoS
+RoS[fuelType_int==4]<-heathRoS
+RoS[fuelType_int==5]<-grassRoS
+RoS[fuelType_int==6]<-0
 
-RoS[fuelType==1]<-biomass*forestMulti
-RoS[fuelType==2]<-biomass*forestMulti
-RoS[fuelType==3]<-grassRoS
-RoS[fuelType==4]<-heathRoS
-RoS[fuelType==5]<-grassRoS
-RoS[fuelType==6]<-0
-
-plot(RoS, main="Rate of Spread (km per hour)")
+levelplot(RoS, margin=F, main="Rate of Spread (km per hour)", par.settings=infernoTheme,at=seq(0,5,0.25))
 ```
+
+### Scenarios
 
 We could now use this model to explore different scenarios, primarily of different climatic conditions but also for different possible land use/cover futures.
 
 To explore the effect of climate, set values we are interested in:
 
 ```{r}
-temperature <- 30  #degrees C
-humidity <- 40     #%
-wind <- 10         #km/hr
-KDBI <- 200     #KDBI (range is 0 [no drought] to 800 [extreme drought])
-daysRain <- 10   #days since rain
+temperature <- 39  #degrees C
+humidity <- 10     #%
+wind <- 30         #km/hr
+KDBI <- 600     #KDBI (range is 0 [no drought] to 800 [extreme drought])
+daysRain <- 30   #days since rain
 pptn <- 10      #last rain in mm
 ```
 
-Then calculate the fire danger for these new climate values:
+These values should imply a higher fire danger than our original model application (check you understand why from the values of the variables).
+
+Then we can calculate the fire danger for these new climate values:
 
 ```{r}
+#same equations as above but now the climate variables have different values
 drought <- 0.191*(KDBI+104)*(daysRain+1)^1.5/(3.52*(daysRain+1)^1.5+pptn-1)
 GrassM <- (((97.7+4.06*humidity)/(temperature+6)-0.00854*humidity))*((100-curing)/100)
 GrassFDM <- 3.35*biomass*exp(-0.0897*GrassM+0.0403*wind)
 ForestFDM <- 1.25*drought*exp((temperature-humidity)/30+0.0234*wind)
 ```
 
-And finally apply the model to our map of fuel types to estimate fire danger
+And finally apply the model to our map of fuel types to estimate fire danger and compare to the original Fire Danger map.
 
 ```{r}
-FDM <- GrassFDM
-FDM[fuelType==1]<-ForestFDM    #deciduous
-FDM[fuelType==2]<-ForestFDM    #conifer
-FDM[fuelType==3]<-max(GrassFDM[fuelType==4])/2   #half grassland danger 
-FDM[fuelType==6]<-0    #non-veg
+FDM2 <- GrassFDM
+FDM2[fuelType_int==1]<-ForestFDM    #deciduous
+FDM2[fuelType_int==2]<-ForestFDM    #conifer
+FDM2[fuelType_int==3]<-max(GrassFDM[fuelType_int==4])/2   #half grassland danger 
+FDM2[fuelType_int==6]<-0    #non-veg
 
-plot(FDM, main="McArthur Fire Danger")
+#combine the two fire danger maps together
+names(FDM) <- "FDM"
+names(FDM2) <- "FDM2"
+FDMs <- c(FDM, FDM2)
+
+levelplot(FDMs, margin=F, main="Fire Danger (McArthur scale)", par.settings=infernoTheme)
 ```
 
-And RoS for the new climate values
+Again, note the colour scale on the right. Where have the light coloured areas in the original map (on the left) gone?
+
+We can also compare summaries of the values in each of our Fire Danger maps:
 
 ```{r}
-RoS <- FDM
-
-forestMulti<-max(FDM[fuelType==1])*0.0012
-
-grassRoS<-max(FDM[fuelType==4]*0.13)
-heathRoS<-max(FDM[fuelType==5]*0.13)
-
-RoS[fuelType==1]<-biomass*forestMulti
-RoS[fuelType==2]<-biomass*forestMulti
-RoS[fuelType==3]<-grassRoS
-RoS[fuelType==4]<-heathRoS
-RoS[fuelType==5]<-grassRoS
-RoS[fuelType==6]<-0
-
-plot(RoS, main="Rate of Spread (km per hour)")
+summary(FDMs)
 ```
+
+We can also calculate RoS for the new climate values and compare:
+
+```{r}
+#copy
+RoS2 <- FDM2
+
+#calculate
+forestMulti<-max(FDM2[fuelType_int==1])*0.0012
+grassRoS<-max(FDM2[fuelType_int==4]*0.13)
+heathRoS<-max(FDM2[fuelType_int==5]*0.13)
+
+#apply to appropriate mappes fuel types 
+RoS2[fuelType_int==1]<-biomass*forestMulti
+RoS2[fuelType_int==2]<-biomass*forestMulti
+RoS2[fuelType_int==3]<-grassRoS
+RoS2[fuelType_int==4]<-heathRoS
+RoS2[fuelType_int==5]<-grassRoS
+RoS2[fuelType_int==6]<-0
+
+#combine
+names(RoS) <- "RoS"
+names(RoS2) <- "RoS2"
+RoSs <- c(RoS, RoS2)
+
+#plot
+levelplot(RoSs, margin=F, main="Rate of Spread (km per hour)", par.settings=infernoTheme)
+```
+
+As above, check you understand how the colour scale as affected the original map. Comparing summaries of the values in the raster maps might help.
+
+```{r}
+summary(RoSs)
+```
+
+Try downloading this document and opening with R-Studio to work with the code interactively. Try changing climate variable values to see the effect on Fire Danger and Rate of Spread across the study area. An interactive version of this (online) will hopefully be ready soon.
 
 ## References
 
